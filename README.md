@@ -10,6 +10,10 @@ All this program does is computing the image flow in a camera image. Then it gro
 
 For image processing OpenCV is used. If you want to build this yourself, make sure OpenCV is set up correctly on your system and in your IDE.
 
+## Demo Video
+
+[![Watch the demo video](thumb.png "Click to get redirected to the Youtube Video")](https://youtu.be/l5aenMUADbg)
+
 ## TO-DOs
 
  - Group images based on whether they move in the same direction.
