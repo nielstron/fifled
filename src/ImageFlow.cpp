@@ -1,7 +1,5 @@
 #include "opencv2/opencv.hpp"
 
-#include <iostream>
-
 using namespace cv;
 using namespace std;
 
@@ -39,6 +37,8 @@ int main(int argc, char** argv)
     const String keys =
         "{help h usage ? |      | print this message }"
         "{thresh tr      | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
+        "{infile i       |      | path to a video file that should be parsed (default: camera 0)}"
+        "{outfile o      |<none>| path to a video file that should be outputted (default: none)}"
 		"{ch convexhull  |      | show convex hull instead of bounding boxes }";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
@@ -46,18 +46,34 @@ int main(int argc, char** argv)
 		exit(EXIT_SUCCESS);
 	}
 	bool boundingBoxes = !parser.has("ch");
-	VideoCapture cap(0);
+	VideoCapture* cap;
+	String in = parser.get<String>("infile");
+	if("" != in){
+		cap = new VideoCapture(in.c_str());
+	}
+	else {
+		cap = new VideoCapture(0);
+	}
 
-	if (!cap.isOpened())
-		return -1;
-
+	if (!cap->isOpened()){
+		throw invalid_argument("Infile/Camera could not be opened");
+	}
 
 	Mat flow, cflow, frame, overlay, dst;
-	cap >> frame;
+	cap->read(frame);
 	Mat gray, prevgray;
 	cvtColor(frame, gray, COLOR_BGR2GRAY);
 	gray.copyTo(prevgray);
 	Mat uflow(frame.size(), CV_32FC2);
+
+	// Writing the labels out
+	VideoWriter* out;
+	if(parser.has("outfile")){
+		out = new VideoWriter(parser.get<String>("outfile"), VideoWriter::fourcc('M','J','P','G'), 15, Size(frame.cols, frame.rows));
+	}
+	else {
+		out = NULL;
+	}
 
 	Mat labelImage(frame.size(), CV_32S);
 	Mat connected(frame.size(), CV_8UC3);
@@ -66,10 +82,8 @@ int main(int argc, char** argv)
 	int hullTresh = parser.get<int>("thresh");
 	vector<Point> hull;
 
-	for(;;)
-	{
-		cap >> frame;
-		imshow("webcam", frame);
+	while(cap->read(frame)) {
+		imshow("input", frame);
 		cvtColor(frame, gray, COLOR_BGR2GRAY);
 
 		calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
@@ -129,11 +143,17 @@ int main(int argc, char** argv)
 		}
 
 		swap(gray, prevgray);
-		imshow("flow", dst);
-		imshow("flow2", overlay);
+		imshow("labels", dst);
+		if(out != NULL){
+			out->write(dst);
+		}
+		imshow("flow", overlay);
 		if (waitKey(1) >= 0){
 			break;
 		}
+	}
+	if(out != NULL){
+		out->release();
 	}
 	return EXIT_SUCCESS;
 }
