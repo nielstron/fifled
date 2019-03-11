@@ -17,9 +17,29 @@ As this only uses a minimal amount of algorithms, the resulting output is really
 When provided with some hint about what is actually moving in the video,
 the result is a lot of labeled frames of an input video, that can be used i.e. to train a neural network like yolo.
 
+## Building
+
+In the project root, run
+
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
+
+## Usage
+
+In the directory where you ran above commands, run
+
+```bash
+./fifled -i=/home/niels/Downloads/Garden\ cat\ cam.mp4 -o=/tmp/neV.avi -ft=1
+./fifled --help
+```
+
 ## Libraries
 
-For image processing OpenCV is used. If you want to build this yourself, make sure OpenCV is set up correctly on your system and in your IDE.
+For image processing OpenCV is used. If you want to build this yourself, [make sure OpenCV is set up correctly on your system and in your IDE](https://docs.opencv.org/4.0.1/df/d65/tutorial_table_of_content_introduction.html).
 
 ## Demo Video
 

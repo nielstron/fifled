@@ -113,7 +113,7 @@ int main(int argc, char** argv)
 				continue;
 			}
 			Rect r = boundingRect(connectedParts[i]);
-			rectangle(dst, r, colors[i], 2);
+			rectangle(dst, r, colors[i], 1);
 		}
 
 		swap(gray, prevgray);
