@@ -4,15 +4,13 @@ using namespace cv;
 using namespace std;
 
 
-static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step,
-	uchar color)
-{
+static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
 	for (int y = 0; y < cflowmap.rows; y += step)
 		for (int x = 0; x < cflowmap.cols; x += step)
 		{
 			const Point2f& fxy = flow.at<Point2f>(y, x);
 			// If flow is greater than 5 pixels
-			if (abs(fxy.x) + abs(fxy.y) > 2) {
+			if (abs(fxy.x) + abs(fxy.y) >= thresh) {
 				//line(cflowmap, Point(x, y), Point(cvRound(x + fxy.x), cvRound(y + fxy.y)), color);
 				cflowmap.at<uchar>(y, x) = color;
 			}
@@ -20,32 +18,19 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step,
 		}
 }
 
-std::vector<cv::Point> rect2Vect(cv::Rect r){
-	std::vector<cv::Point> hull(5);
-	hull[0] = r.tl();
-	hull[2] = r.br();
-	hull[1].y = hull[0].y;
-	hull[1].x = hull[2].x;
-	hull[3].y = hull[2].y;
-	hull[3].x = hull[0].x;
-	hull[4] = r.tl();
-	return hull;
-}
-
 int main(int argc, char** argv)
 {
     const String keys =
         "{help h usage ? |      | print this message }"
-        "{thresh tr      | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
+        "{bbthresh bt    | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
+        "{flowthresh ft  | 2    | minimum flow in pixels to be marked as a moving pixel }"
         "{infile i       |      | path to a video file that should be parsed (default: camera 0)}"
-        "{outfile o      |      | path to a video file that should be outputted}"
-		"{bb boundingbox |      | show bounding box instead of convex hull}";
+        "{outfile o      |      | path to a video file that should be outputted}";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
 		parser.printMessage();
 		exit(EXIT_SUCCESS);
 	}
-	bool boundingBoxes = parser.has("bb");
 	VideoCapture* cap;
 	String in = parser.get<String>("infile");
 	if("" != in){
@@ -78,8 +63,9 @@ int main(int argc, char** argv)
 	Mat labelImage(frame.size(), CV_32S);
 	Mat connected(frame.size(), CV_8UC3);
 
-	// At least hullTresh points for a connected component to be counted
-	int hullTresh = parser.get<int>("thresh");
+	int hullTresh = parser.get<int>("bbthresh");
+	int flowthresh = parser.get<int>("flowthresh");
+	flowthresh *= flowthresh;
 	vector<Point> hull;
 
 	while(cap->read(frame)) {
@@ -92,7 +78,7 @@ int main(int argc, char** argv)
 
 		// Calculate which parts of the image are moving
 		overlay = Mat::zeros(cflow.size(), CV_8UC1);
-		drawOptFlowMap(uflow, overlay, 1, 255);
+		drawOptFlowMap(uflow, overlay, 1, 255, flowthresh);
 
 		// Detect connected moving parts
 
@@ -126,20 +112,8 @@ int main(int argc, char** argv)
 			if (connectedParts[i].size() < hullTresh) {
 				continue;
 			}
-			if(boundingBoxes){
-				Rect r = boundingRect(connectedParts[i]);
-				hull = rect2Vect(r);
-			}
-			else{
-				convexHull(connectedParts[i], hull);
-			}
-			Point cur, last;
-			cur = hull[0];
-			for (int j = 1; j < hull.size(); j++) {
-				last = cur;
-				cur = hull[j];
-				line(dst, last, cur, colors[i], 2);
-			}
+			Rect r = boundingRect(connectedParts[i]);
+			rectangle(dst, r, colors[i], 2);
 		}
 
 		swap(gray, prevgray);
