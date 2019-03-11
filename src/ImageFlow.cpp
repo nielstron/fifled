@@ -38,14 +38,14 @@ int main(int argc, char** argv)
         "{help h usage ? |      | print this message }"
         "{thresh tr      | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
         "{infile i       |      | path to a video file that should be parsed (default: camera 0)}"
-        "{outfile o      |<none>| path to a video file that should be outputted (default: none)}"
-		"{ch convexhull  |      | show convex hull instead of bounding boxes }";
+        "{outfile o      |      | path to a video file that should be outputted}"
+		"{bb boundingbox |      | show bounding box instead of convex hull}";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
 		parser.printMessage();
 		exit(EXIT_SUCCESS);
 	}
-	bool boundingBoxes = !parser.has("ch");
+	bool boundingBoxes = parser.has("bb");
 	VideoCapture* cap;
 	String in = parser.get<String>("infile");
 	if("" != in){
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 
 	// Writing the labels out
 	VideoWriter* out;
-	if(parser.has("outfile")){
+	if("" != parser.get<String>("outfile")){
 		out = new VideoWriter(parser.get<String>("outfile"), VideoWriter::fourcc('M','J','P','G'), 15, Size(frame.cols, frame.rows));
 	}
 	else {
