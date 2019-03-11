@@ -22,9 +22,30 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step,
 		}
 }
 
+std::vector<cv::Point> rect2Vect(cv::Rect r){
+	std::vector<cv::Point> hull(5);
+	hull[0] = r.tl();
+	hull[2] = r.br();
+	hull[1].y = hull[0].y;
+	hull[1].x = hull[2].x;
+	hull[3].y = hull[2].y;
+	hull[3].x = hull[0].x;
+	hull[4] = r.tl();
+	return hull;
+}
+
 int main(int argc, char** argv)
 {
-	cv::CommandLineParser parser(argc, argv, "{help h||}");
+    const String keys =
+        "{help h usage ? |      | print this message }"
+        "{thresh tr      | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
+		"{ch convexhull  |      | show convex hull instead of bounding boxes }";
+	cv::CommandLineParser parser(argc, argv, keys);
+	if(parser.has("help")){
+		parser.printMessage();
+		exit(EXIT_SUCCESS);
+	}
+	bool boundingBoxes = !parser.has("ch");
 	VideoCapture cap(0);
 
 	if (!cap.isOpened())
@@ -42,7 +63,7 @@ int main(int argc, char** argv)
 	Mat connected(frame.size(), CV_8UC3);
 
 	// At least hullTresh points for a connected component to be counted
-	int hullTresh = 50;
+	int hullTresh = parser.get<int>("thresh");
 	vector<Point> hull;
 
 	for(;;)
@@ -91,8 +112,13 @@ int main(int argc, char** argv)
 			if (connectedParts[i].size() < hullTresh) {
 				continue;
 			}
-
-			convexHull(connectedParts[i], hull);
+			if(boundingBoxes){
+				Rect r = boundingRect(connectedParts[i]);
+				hull = rect2Vect(r);
+			}
+			else{
+				convexHull(connectedParts[i], hull);
+			}
 			Point cur, last;
 			cur = hull[0];
 			for (int j = 1; j < hull.size(); j++) {
@@ -109,6 +135,6 @@ int main(int argc, char** argv)
 			break;
 		}
 	}
-	return 0;
+	return EXIT_SUCCESS;
 }
 
