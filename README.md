@@ -1,4 +1,4 @@
-# Fast Image Flow based Labeling
+# Fast Image Flow based Label Editor
 
 A tool to create bounding boxes and labels for moving objects in mostly static videos.
 
