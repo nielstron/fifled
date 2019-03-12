@@ -6,9 +6,14 @@
 using namespace cv;
 using namespace std;
 
+struct FlowObject {
+	cv::Rect boundingBox;
+	cv::String label;
+	cv::Vec3b color;
+};
 
-static bool comp(cv::Rect a, cv::Rect b){
-	return a.area() < b.area();
+static bool comp(FlowObject a, FlowObject b){
+	return a.boundingBox.area() < b.boundingBox.area();
 }
 
 
@@ -26,12 +31,12 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color
 		}
 }
 
-static void writeLabels(const char* path, std::vector<cv::Rect> rectangles, cv::String label){
+static void writeLabels(const char* path, std::vector<FlowObject> rectangles){
 	std::ofstream output;
 	output.open(path);
 	for(int i = 0; i < rectangles.size(); i++){
-		cv::Rect r = rectangles[i];
-		output << label;
+		cv::Rect r = rectangles[i].boundingBox;
+		output << rectangles[i].label;
 		output << " ";
 		output << r.tl().x << " " << r.tl().y << " ";
 		output << r.br().x << " " << r.br().y;
@@ -129,10 +134,10 @@ int main(int argc, char** argv)
 	int flowthresh = parser.get<int>("flowthresh");
 	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
-	std::vector<cv::Rect> rectangles;
+	std::vector<FlowObject> rectangles;
 
 
-	std::vector<cv::Rect> staticObj;
+	std::vector<FlowObject> staticObj;
 	int frame_num = 0;
 	while(cap->read(frame)) {
 		frameGPU.upload(frame);
@@ -153,22 +158,6 @@ int main(int argc, char** argv)
 
 		int nLabels = connectedComponents(overlay, labelImage, 8);
 		// -- Drawing
-		std::vector<Vec3b> colors(nLabels);
-		colors[0] = Vec3b(0, 0, 0);//background
-		for (int label = 1; label < nLabels; ++label) {
-			colors[label] = Vec3b((rand() & 255), (rand() & 255), (rand() & 255));
-		}
-		/*for (int r = 0; r < connected.rows; ++r) {
-		for (int c = 0; c < connected.cols; ++c) {
-		int label = labelImage.at<int>(r, c);
-		Vec3b &pixel = connected.at<Vec3b>(r, c);
-		pixel = colors[label];
-		}
-		}*/
-		//addWeighted(cflow, 0.5, connected, 0.5, 0.0, dst);
-		// Fit ellipses to them or convex hulls or fitting rectangles
-
-		// Convex hull => collect points belonging to one hull
 		vector<vector<Point>> connectedParts(nLabels);
 
 		for (int r = 0; r < dst.rows; ++r) {
@@ -177,33 +166,39 @@ int main(int argc, char** argv)
 				connectedParts[label].push_back(Point(c, r));
 			}
 		}
+		// Compute bounding boxes
 		rectangles.clear();
 		for (int i = 1; i < nLabels; i++) {
 			if (connectedParts[i].size() < hullTresh) {
 				continue;
 			}
 			Rect r = boundingRect(connectedParts[i]);
-			rectangles.push_back(r);
+			FlowObject f {
+				r,
+				label,
+				cv::Vec3b(rand()%255, rand()%255, rand()%255)
+			};
+			rectangles.push_back(f);
 		}
 		// Handle maxbb rectangles
-		std::vector<cv::Rect> res(maxbb);
+		std::vector<FlowObject> res(maxbb);
 		if(0 == maxbb || maxbb > rectangles.size()){
 			res = rectangles;
 		}
 		else {
 			std::make_heap(begin(rectangles), end(rectangles), comp);
 			for(int i = 0; i < maxbb; i++){
-				Rect r = rectangles[0];
+				FlowObject r = rectangles[0];
 				std::pop_heap(begin(rectangles), end(rectangles), comp);
 				rectangles.pop_back();
 				res.push_back(r);
 			}
 		}
 		// add static objects, but do now show when occluded by flow rect
-		for(Rect s : staticObj){
+		for(FlowObject s : staticObj){
 			bool add = true;
-			for(Rect b : res){
-				if(b.contains(s.tl()) && b.contains(s.br())){
+			for(FlowObject b : res){
+				if(b.boundingBox.contains(s.boundingBox.tl()) && b.boundingBox.contains(s.boundingBox.br())){
 					add = false;
 					break;
 				}
@@ -214,12 +209,13 @@ int main(int argc, char** argv)
 		}
 		// Drawing beautiful output
 		for(int i = 0; i < res.size(); i++){
-			cv::rectangle(dst, res[i], colors[i], 1);
+			FlowObject f = res[i];
+			cv::rectangle(dst, f.boundingBox, f.color, 1);
 			if("" != label){
 				int baseline = 0;
-				cv::Size textRec = cv::getTextSize(label, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, 1, &baseline);
-				cv::rectangle(dst, Rect(res[i].tl() - Point(0, textRec.height), res[i].tl() + Point(textRec.width, 0)), colors[i], cv::FILLED);
-				cv::putText(dst, label, res[i].tl(), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+				cv::Size textRec = cv::getTextSize(f.label, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, 1, &baseline);
+				cv::rectangle(dst, Rect(f.boundingBox.tl() - Point(0, textRec.height), f.boundingBox.tl() + Point(textRec.width, 0)), f.color, cv::FILLED);
+				cv::putText(dst, f.label, f.boundingBox.tl(), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
 			}
 		}
 
@@ -237,7 +233,7 @@ int main(int argc, char** argv)
 		if(labels_save){
 			sprintf(labels_path_num_pointer, "%.10d.txt", frame_num);
 			// Write labels
-			writeLabels(labels_path_buffer, res, label);
+			writeLabels(labels_path_buffer, res);
 		}
 		if(out != NULL){
 			out->write(dst);
@@ -246,17 +242,18 @@ int main(int argc, char** argv)
 		swap(gray, prevgray);
 		frame_num ++;
 		int c = 0;
-		if ((c = waitKey(1)) >= 0 || frame_num == 3){
+		if ((c = waitKey(1)) >= 0 || frame_num == 1){
 			if(c==27) {
 				break;
 			}
 			else{
 				// Ask for static objects
+				cv::destroyAllWindows();
 				Rect userIn;
 				while(true){
 					cv::Mat staticDisplay(frame);
-					for(Rect r : staticObj){
-						cv::rectangle(staticDisplay, r, cv::Scalar(0, 0, 0), 2);
+					for(FlowObject f : staticObj){
+						cv::rectangle(staticDisplay, f.boundingBox, cv::Scalar(0, 0, 0), 2);
 					}
 					cv::imshow("first_frame", staticDisplay);
 					cv::setWindowTitle("first_frame", "Please select static objects");
@@ -264,7 +261,15 @@ int main(int argc, char** argv)
 					userIn = cv::selectROI("first_frame", staticDisplay);
 					// TODO let user input label
 					if(!userIn.empty()){
-						staticObj.push_back(userIn);
+						cv::String label;
+						printf("Please input the label of the static object\n");
+						cin >> label;
+						FlowObject f {
+							userIn,
+							label,
+							Vec3b(255, 255, 255)
+						};
+						staticObj.push_back(f);
 					}
 					else{
 						break;
