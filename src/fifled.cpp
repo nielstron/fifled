@@ -135,9 +135,9 @@ int main(int argc, char** argv)
 	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
 	std::vector<FlowObject> rectangles;
-
-
 	std::vector<FlowObject> staticObj;
+
+	printf("\n%sPress any key to select static objects. Press ESC to exit.%s\n\n", "\033[0;34m", "\033[0m");
 	int frame_num = 0;
 	while(cap->read(frame)) {
 		frameGPU.upload(frame);
@@ -221,7 +221,6 @@ int main(int argc, char** argv)
 
 		if(display_input) imshow("input", frame);
 		if(display_labels) imshow("labels", dst);
-		//cv::displayOverlay("labels", "Press any key to select static objects. Press ESC to exit.");
 		if(display_flow) imshow("flow", overlay);
 
 		// Storing frames and generated labels
