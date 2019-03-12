@@ -51,6 +51,7 @@ int main(int argc, char** argv)
         "{framep fp      |<none> | path/prefix for saving video frames}"
         "{labelp lp      |<none> | path/prefix for saving label files}"
 		"{maxbb mb       | 0     | select only the <n> largest bounding boxes (0 = no maximum) }"
+		"{windows w      | ifl   | select which images to display. i = input, f = flow, l = labels }"
 		"{labels l       |unknown| label for found boxes. overrides any other classification methods }";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
@@ -68,6 +69,21 @@ int main(int argc, char** argv)
 
 	if (!cap->isOpened()){
 		throw invalid_argument("Infile/Camera could not be opened");
+	}
+	// Which mats to show
+	bool display_input = false, display_flow = false, display_labels = false;
+	for(char c : parser.get<cv::String>("windows")){
+		switch(c){
+			case 'i':
+				display_input = true;
+				break;
+			case 'f':
+				display_flow = true;
+				break;
+			case 'l':
+				display_labels = true;
+				break;
+		}
 	}
 
 	// Mats used
@@ -113,11 +129,12 @@ int main(int argc, char** argv)
 	int flowthresh = parser.get<int>("flowthresh");
 	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
-	vector<Rect> rectangles;
+	std::vector<cv::Rect> rectangles;
 
+
+	std::vector<cv::Rect> staticObj;
 	int frame_num = 0;
 	while(cap->read(frame)) {
-		imshow("input", frame);
 		frameGPU.upload(frame);
 		cv::cuda::cvtColor(frameGPU, gray, COLOR_BGR2GRAY);
 
@@ -182,6 +199,19 @@ int main(int argc, char** argv)
 				res.push_back(r);
 			}
 		}
+		// add static objects, but do now show when occluded by flow rect
+		for(Rect s : staticObj){
+			bool add = true;
+			for(Rect b : res){
+				if(b.contains(s.tl()) && b.contains(s.br())){
+					add = false;
+					break;
+				}
+			}
+			if(add){
+				res.push_back(s);
+			}
+		}
 		// Drawing beautiful output
 		for(int i = 0; i < res.size(); i++){
 			cv::rectangle(dst, res[i], colors[i], 1);
@@ -193,8 +223,10 @@ int main(int argc, char** argv)
 			}
 		}
 
-		imshow("labels", dst);
-		imshow("flow", overlay);
+		if(display_input) imshow("input", frame);
+		if(display_labels) imshow("labels", dst);
+		//cv::displayOverlay("labels", "Press any key to select static objects. Press ESC to exit.");
+		if(display_flow) imshow("flow", overlay);
 
 		// Storing frames and generated labels
 		if(frames_save){
@@ -213,8 +245,33 @@ int main(int argc, char** argv)
 
 		swap(gray, prevgray);
 		frame_num ++;
-		if (waitKey(1) >= 0){
-			break;
+		int c = 0;
+		if ((c = waitKey(1)) >= 0 || frame_num == 3){
+			if(c==27) {
+				break;
+			}
+			else{
+				// Ask for static objects
+				Rect userIn;
+				while(true){
+					cv::Mat staticDisplay(frame);
+					for(Rect r : staticObj){
+						cv::rectangle(staticDisplay, r, cv::Scalar(0, 0, 0), 2);
+					}
+					cv::imshow("first_frame", staticDisplay);
+					cv::setWindowTitle("first_frame", "Please select static objects");
+					//cv::displayOverlay("first_frame", "Controls: use space or enter to finish current selection and start a new one, use esc to terminate multiple ROI selection process.");
+					userIn = cv::selectROI("first_frame", staticDisplay);
+					// TODO let user input label
+					if(!userIn.empty()){
+						staticObj.push_back(userIn);
+					}
+					else{
+						break;
+					}
+				}
+				cv::destroyWindow("first_frame");
+			}
 		}
 	}
 	if(out != NULL){
