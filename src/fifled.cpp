@@ -1,6 +1,7 @@
 #include <fstream>
 
 #include "opencv2/opencv.hpp"
+#include "opencv2/cudaoptflow.hpp"
 
 using namespace cv;
 using namespace std;
@@ -70,14 +71,16 @@ int main(int argc, char** argv)
 	}
 
 	// Mats used
-	Mat flow, cflow, frame, overlay, dst;
+	cv::Mat overlay, dst, cflow, frame;
+	cv::cuda::GpuMat flow, frameGPU, cflowGPU, dstGPU;
 	cap->read(frame);
-	Mat gray, prevgray;
-	cvtColor(frame, gray, COLOR_BGR2GRAY);
+	cv::cuda::GpuMat gray, prevgray;
+	frameGPU.upload(frame);
+	cv::cuda::cvtColor(frameGPU, gray, COLOR_BGR2GRAY);
 	gray.copyTo(prevgray);
-	Mat uflow(frame.size(), CV_32FC2);
-	Mat labelImage(frame.size(), CV_32S);
-	Mat connected(frame.size(), CV_8UC3);
+	cv::cuda::GpuMat uflow(frame.size(), CV_32FC2);
+	cv::Mat labelImage(frame.size(), CV_32S);
+	cv::Mat connected(frame.size(), CV_8UC3);
 
 	// Writing the labels out
 	VideoWriter* out;
@@ -115,15 +118,19 @@ int main(int argc, char** argv)
 	int frame_num = 0;
 	while(cap->read(frame)) {
 		imshow("input", frame);
-		cvtColor(frame, gray, COLOR_BGR2GRAY);
+		frameGPU.upload(frame);
+		cv::cuda::cvtColor(frameGPU, gray, COLOR_BGR2GRAY);
 
-		calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
-		cvtColor(prevgray, cflow, COLOR_GRAY2BGR);
-		cvtColor(prevgray, dst, COLOR_GRAY2BGR);
+		auto farneback = cv::cuda::FarnebackOpticalFlow::create();
+		farneback->calc(prevgray, gray, uflow);
+		//calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
+		cv::cuda::cvtColor(prevgray, dstGPU, COLOR_GRAY2BGR);
+		dstGPU.download(dst);
+		uflow.download(cflow);
 
 		// Calculate which parts of the image are moving
 		overlay = Mat::zeros(cflow.size(), CV_8UC1);
-		drawOptFlowMap(uflow, overlay, 1, 255, flowthresh);
+		drawOptFlowMap(cflow, overlay, 1, 255, flowthresh);
 
 		// Detect connected moving parts
 
