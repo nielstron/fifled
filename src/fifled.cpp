@@ -42,15 +42,15 @@ static void writeLabels(const char* path, std::vector<cv::Rect> rectangles, cv::
 int main(int argc, char** argv)
 {
     const String keys =
-        "{help h usage ? |      | print this message }"
-        "{bbthresh bt    | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
-        "{flowthresh ft  | 2    | minimum flow in pixels to be marked as a moving pixel }"
-        "{infile i       |      | path to a video file or image sequence that should be parsed (default: camera 0)}"
-        "{outfile o      |      | path to a video file that should be outputted}"
-        "{framep fp      |<none>| path/prefix for saving video frames}"
-        "{labelp lp      |<none>| path/prefix for saving label files}"
-		"{maxbb mb       | 0    | select only the <n> largest bounding boxes (0 = no maximum) }"
-		"{labels l       |person| label for found boxes. overrides any other classification methods }";
+        "{help h usage ? |       | print this message }"
+        "{bbthresh bt    | 500   | pixel threshold to be accepted as a 'thing' to be bounded }"
+        "{flowthresh ft  | 2     | minimum flow in pixels to be marked as a moving pixel }"
+        "{infile i       |       | path to a video file or image sequence that should be parsed (default: camera 0)}"
+        "{outfile o      |       | path to a video file that should be outputted}"
+        "{framep fp      |<none> | path/prefix for saving video frames}"
+        "{labelp lp      |<none> | path/prefix for saving label files}"
+		"{maxbb mb       | 0     | select only the <n> largest bounding boxes (0 = no maximum) }"
+		"{labels l       |unknown| label for found boxes. overrides any other classification methods }";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
 		parser.printMessage();
@@ -175,13 +175,21 @@ int main(int argc, char** argv)
 				res.push_back(r);
 			}
 		}
+		// Drawing beautiful output
 		for(int i = 0; i < res.size(); i++){
 			cv::rectangle(dst, res[i], colors[i], 1);
+			if("" != label){
+				int baseline = 0;
+				cv::Size textRec = cv::getTextSize(label, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, 1, &baseline);
+				cv::rectangle(dst, Rect(res[i].tl() - Point(0, textRec.height), res[i].tl() + Point(textRec.width, 0)), colors[i], cv::FILLED);
+				cv::putText(dst, label, res[i].tl(), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+			}
 		}
 
 		imshow("labels", dst);
 		imshow("flow", overlay);
 
+		// Storing frames and generated labels
 		if(frames_save){
 			sprintf(frames_path_num_pointer, "%.10d.png", frame_num);
 			printf("%s\n", frames_path_buffer);
