@@ -1,7 +1,10 @@
+#include <fstream>
+
 #include "opencv2/opencv.hpp"
 
 using namespace cv;
 using namespace std;
+
 
 static bool comp(cv::Rect a, cv::Rect b){
 	return a.area() < b.area();
@@ -22,15 +25,32 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color
 		}
 }
 
+static void writeLabels(const char* path, std::vector<cv::Rect> rectangles, cv::String label){
+	std::ofstream output;
+	output.open(path);
+	for(int i = 0; i < rectangles.size(); i++){
+		cv::Rect r = rectangles[i];
+		output << label;
+		output << " ";
+		output << r.tl().x << " " << r.tl().y << " ";
+		output << r.br().x << " " << r.br().y;
+		output << "\n";
+	}
+	output.close();
+}
+
 int main(int argc, char** argv)
 {
     const String keys =
         "{help h usage ? |      | print this message }"
         "{bbthresh bt    | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
         "{flowthresh ft  | 2    | minimum flow in pixels to be marked as a moving pixel }"
-        "{infile i       |      | path to a video file that should be parsed (default: camera 0)}"
+        "{infile i       |      | path to a video file or image sequence that should be parsed (default: camera 0)}"
         "{outfile o      |      | path to a video file that should be outputted}"
-		"{maxbb mb       | 0    | select only the <n> largest bounding boxes (0 = no maximum) }";
+        "{framep fp      |<none>| path/prefix for saving video frames}"
+        "{labelp lp      |<none>| path/prefix for saving label files}"
+		"{maxbb mb       | 0    | select only the <n> largest bounding boxes (0 = no maximum) }"
+		"{labels l       |person| label for found boxes. overrides any other classification methods }";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
 		parser.printMessage();
@@ -49,12 +69,15 @@ int main(int argc, char** argv)
 		throw invalid_argument("Infile/Camera could not be opened");
 	}
 
+	// Mats used
 	Mat flow, cflow, frame, overlay, dst;
 	cap->read(frame);
 	Mat gray, prevgray;
 	cvtColor(frame, gray, COLOR_BGR2GRAY);
 	gray.copyTo(prevgray);
 	Mat uflow(frame.size(), CV_32FC2);
+	Mat labelImage(frame.size(), CV_32S);
+	Mat connected(frame.size(), CV_8UC3);
 
 	// Writing the labels out
 	VideoWriter* out;
@@ -64,9 +87,24 @@ int main(int argc, char** argv)
 	else {
 		out = NULL;
 	}
+	bool labels_save = parser.has("labelp");
+	char *labels_path_buffer, *labels_path_num_pointer;
+	{
+		cv::String labels_path = parser.get<cv::String>("labelp");
+		labels_path_buffer = new char[labels_path.length() + 100];
+		strcpy(labels_path_buffer, labels_path.c_str());
+		labels_path_num_pointer = labels_path_buffer+labels_path.length();
+	}
+	bool frames_save = parser.has("framep");
+	char *frames_path_buffer, *frames_path_num_pointer;
+	{
+		cv::String frames_path = parser.get<cv::String>("framep");
+		frames_path_buffer = new char[frames_path.length() + 100];
+		strcpy(frames_path_buffer, frames_path.c_str());
+		frames_path_num_pointer = frames_path_buffer+frames_path.length();
+	}
+	cv::String label = parser.get<cv::String>("labels");
 
-	Mat labelImage(frame.size(), CV_32S);
-	Mat connected(frame.size(), CV_8UC3);
 
 	int hullTresh = parser.get<int>("bbthresh");
 	int flowthresh = parser.get<int>("flowthresh");
@@ -74,6 +112,7 @@ int main(int argc, char** argv)
 	flowthresh *= flowthresh;
 	vector<Rect> rectangles;
 
+	int frame_num = 0;
 	while(cap->read(frame)) {
 		imshow("input", frame);
 		cvtColor(frame, gray, COLOR_BGR2GRAY);
@@ -123,10 +162,9 @@ int main(int argc, char** argv)
 			rectangles.push_back(r);
 		}
 		// Handle maxbb rectangles
+		std::vector<cv::Rect> res(maxbb);
 		if(0 == maxbb || maxbb > rectangles.size()){
-			for(int i = 0; i < rectangles.size(); i++) {
-				rectangle(dst, rectangles[i], colors[i], 1);
-			}
+			res = rectangles;
 		}
 		else {
 			std::make_heap(begin(rectangles), end(rectangles), comp);
@@ -134,16 +172,32 @@ int main(int argc, char** argv)
 				Rect r = rectangles[0];
 				std::pop_heap(begin(rectangles), end(rectangles), comp);
 				rectangles.pop_back();
-				cv::rectangle(dst, r, colors[i], 1);
+				res.push_back(r);
 			}
 		}
+		for(int i = 0; i < res.size(); i++){
+			cv::rectangle(dst, res[i], colors[i], 1);
+		}
 
-		swap(gray, prevgray);
 		imshow("labels", dst);
+		imshow("flow", overlay);
+
+		if(frames_save){
+			sprintf(frames_path_num_pointer, "%.10d.png", frame_num);
+			printf("%s\n", frames_path_buffer);
+			cv::imwrite(frames_path_buffer, frame);
+		}
+		if(labels_save){
+			sprintf(labels_path_num_pointer, "%.10d.txt", frame_num);
+			// Write labels
+			writeLabels(labels_path_buffer, res, label);
+		}
 		if(out != NULL){
 			out->write(dst);
 		}
-		imshow("flow", overlay);
+
+		swap(gray, prevgray);
+		frame_num ++;
 		if (waitKey(1) >= 0){
 			break;
 		}
