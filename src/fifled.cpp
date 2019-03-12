@@ -3,6 +3,10 @@
 using namespace cv;
 using namespace std;
 
+static bool comp(cv::Rect a, cv::Rect b){
+	return a.area() < b.area();
+}
+
 
 static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
 	for (int y = 0; y < cflowmap.rows; y += step)
@@ -25,7 +29,8 @@ int main(int argc, char** argv)
         "{bbthresh bt    | 500  | pixel threshold to be accepted as a 'thing' to be bounded }"
         "{flowthresh ft  | 2    | minimum flow in pixels to be marked as a moving pixel }"
         "{infile i       |      | path to a video file that should be parsed (default: camera 0)}"
-        "{outfile o      |      | path to a video file that should be outputted}";
+        "{outfile o      |      | path to a video file that should be outputted}"
+		"{maxbb mb       | 0    | select only the <n> largest bounding boxes (0 = no maximum) }";
 	cv::CommandLineParser parser(argc, argv, keys);
 	if(parser.has("help")){
 		parser.printMessage();
@@ -65,8 +70,9 @@ int main(int argc, char** argv)
 
 	int hullTresh = parser.get<int>("bbthresh");
 	int flowthresh = parser.get<int>("flowthresh");
+	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
-	vector<Point> hull;
+	vector<Rect> rectangles;
 
 	while(cap->read(frame)) {
 		imshow("input", frame);
@@ -108,12 +114,28 @@ int main(int argc, char** argv)
 				connectedParts[label].push_back(Point(c, r));
 			}
 		}
+		rectangles.clear();
 		for (int i = 1; i < nLabels; i++) {
 			if (connectedParts[i].size() < hullTresh) {
 				continue;
 			}
 			Rect r = boundingRect(connectedParts[i]);
-			rectangle(dst, r, colors[i], 1);
+			rectangles.push_back(r);
+		}
+		// Handle maxbb rectangles
+		if(0 == maxbb || maxbb > rectangles.size()){
+			for(int i = 0; i < rectangles.size(); i++) {
+				rectangle(dst, rectangles[i], colors[i], 1);
+			}
+		}
+		else {
+			std::make_heap(begin(rectangles), end(rectangles), comp);
+			for(int i = 0; i < maxbb; i++){
+				Rect r = rectangles[0];
+				std::pop_heap(begin(rectangles), end(rectangles), comp);
+				rectangles.pop_back();
+				cv::rectangle(dst, r, colors[i], 1);
+			}
 		}
 
 		swap(gray, prevgray);
