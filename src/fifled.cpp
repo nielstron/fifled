@@ -1,4 +1,5 @@
 #include <fstream>
+#include <map>
 
 #include "opencv2/opencv.hpp"
 #include "opencv2/cudaoptflow.hpp"
@@ -18,12 +19,42 @@ static bool comp(FlowObject a, FlowObject b){
 
 
 static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
+    // Determine peak flow
+    const std::map<int, unsigned int> hist_x;
+    unsigned int xmax = 0;
+    const std::map<int, unsigned int> hist_y;
+    unsigned int ymax = 0;
+
+    MatConstIterator_<float> it = cflowmap.begin<double>(), it_end = cflowmap.end<double>();
+    for(; it != ; it++){
+        if(hist_x.find(*it) != it_end){
+            hist_x[*it] += 1;
+        }
+        else{
+            hist_x[*it] = 1;
+        }
+        if(hist_x[*it] > xmax){
+            xmax = hist_x[*it];
+        }
+
+        if(hist_y.find(*it) != it_end){
+            hist_y[*it] += 1;
+        }
+        else{
+            hist_y[*it] = 1;
+        }
+        if(hist_y[*it] > ymax){
+            ymax = hist_y[*it];
+        }
+    }
+
+    // Draw normalized flow map
 	for (int y = 0; y < cflowmap.rows; y += step)
 		for (int x = 0; x < cflowmap.cols; x += step)
 		{
 			const Point2f& fxy = flow.at<Point2f>(y, x);
 			// If flow is greater than 5 pixels
-			if (abs(fxy.x) + abs(fxy.y) >= thresh) {
+			if (abs(fxy.x - xmax) + abs(fxy.y - ymax) >= thresh) {
 				//line(cflowmap, Point(x, y), Point(cvRound(x + fxy.x), cvRound(y + fxy.y)), color);
 				cflowmap.at<uchar>(y, x) = color;
 			}
