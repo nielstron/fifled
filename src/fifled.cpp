@@ -20,32 +20,36 @@ static bool comp(FlowObject a, FlowObject b){
 
 static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
     // Determine peak flow
-    const std::map<int, unsigned int> hist_x;
+    std::map<int, unsigned int> hist_x;
     unsigned int xmax = 0;
-    const std::map<int, unsigned int> hist_y;
+    std::map<int, unsigned int> hist_y;
     unsigned int ymax = 0;
+    auto hist_x_end = hist_x.end();
+    auto hist_y_end = hist_y.end();
 
-    MatConstIterator_<float> it = cflowmap.begin<double>(), it_end = cflowmap.end<double>();
-    for(; it != ; it++){
-        if(hist_x.find(*it) != it_end){
-            hist_x[*it] += 1;
+    MatConstIterator_<Point2f> it = flow.begin<Point2f>(), it_end = flow.end<Point2f>();
+    for(; it != it_end; it++){
+        // Collect x-Movements
+        unsigned int a = 0;
+        if(hist_x.find((*it).x) != hist_x_end){
+            a = hist_x[(int) (*it).x];
         }
-        else{
-            hist_x[*it] = 1;
+        a += 1;
+        if(a > xmax){
+            xmax = a;
         }
-        if(hist_x[*it] > xmax){
-            xmax = hist_x[*it];
-        }
+        hist_x[(int) (*it).x] = a;
 
-        if(hist_y.find(*it) != it_end){
-            hist_y[*it] += 1;
+        // Collect y-Movements
+        a = 0;
+        if(hist_y.find((*it).y) != hist_y_end){
+            a = hist_y[(int) (*it).y];
         }
-        else{
-            hist_y[*it] = 1;
+        a += 1;
+        if(a > ymax){
+            ymax = a;
         }
-        if(hist_y[*it] > ymax){
-            ymax = hist_y[*it];
-        }
+        hist_y[(int) (*it).y] = a;
     }
 
     // Draw normalized flow map
@@ -176,7 +180,7 @@ int main(int argc, char** argv)
 
 		auto farneback = cv::cuda::FarnebackOpticalFlow::create();
 		farneback->calc(prevgray, gray, uflow);
-		//calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
+		calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
 		cv::cuda::cvtColor(prevgray, dstGPU, COLOR_GRAY2BGR);
 		dstGPU.download(dst);
 		uflow.download(cflow);
@@ -287,13 +291,12 @@ int main(int argc, char** argv)
 					}
 					cv::imshow("first_frame", staticDisplay);
 					cv::setWindowTitle("first_frame", "Please select static objects");
-					//cv::displayOverlay("first_frame", "Controls: use space or enter to finish current selection and start a new one, use esc to terminate multiple ROI selection process.");
 					userIn = cv::selectROI("first_frame", staticDisplay);
 					// TODO let user input label
 					if(!userIn.empty()){
 						cv::String label;
 						printf("Please input the label of the static object\n");
-						cin >> label;
+						//cin >> label;
 						FlowObject f {
 							userIn,
 							label,
