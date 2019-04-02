@@ -21,9 +21,11 @@ static bool comp(FlowObject a, FlowObject b){
 static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
     // Determine peak flow
     std::map<int, unsigned int> hist_x;
-    unsigned int xmax = 0;
+    unsigned int xmax_v = 0;
+    int xmax_m = 0;
     std::map<int, unsigned int> hist_y;
-    unsigned int ymax = 0;
+    unsigned int ymax_v = 0;
+    int ymax_m = 0;
     auto hist_x_end = hist_x.end();
     auto hist_y_end = hist_y.end();
 
@@ -35,8 +37,9 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color
             a = hist_x[(int) (*it).x];
         }
         a += 1;
-        if(a > xmax){
-            xmax = a;
+        if(a > xmax_v){
+            xmax_v = a;
+			xmax_m = (*it).x;
         }
         hist_x[(int) (*it).x] = a;
 
@@ -46,8 +49,9 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color
             a = hist_y[(int) (*it).y];
         }
         a += 1;
-        if(a > ymax){
-            ymax = a;
+        if(a > ymax_v){
+            ymax_v = a;
+			ymax_m = (*it).y;
         }
         hist_y[(int) (*it).y] = a;
     }
@@ -58,7 +62,7 @@ static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color
 		{
 			const Point2f& fxy = flow.at<Point2f>(y, x);
 			// If flow is greater than 5 pixels
-			if (abs(fxy.x - xmax) + abs(fxy.y - ymax) >= thresh) {
+			if (abs(fxy.x - xmax_m) + abs(fxy.y - ymax_m) >= thresh) {
 				//line(cflowmap, Point(x, y), Point(cvRound(x + fxy.x), cvRound(y + fxy.y)), color);
 				cflowmap.at<uchar>(y, x) = color;
 			}
@@ -180,7 +184,7 @@ int main(int argc, char** argv)
 
 		auto farneback = cv::cuda::FarnebackOpticalFlow::create();
 		farneback->calc(prevgray, gray, uflow);
-		calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
+		//calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
 		cv::cuda::cvtColor(prevgray, dstGPU, COLOR_GRAY2BGR);
 		dstGPU.download(dst);
 		uflow.download(cflow);
