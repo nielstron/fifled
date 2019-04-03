@@ -1,7 +1,16 @@
 #include <fstream>
 
 #include "opencv2/opencv.hpp"
+
+/*****************
+ * Change CUDA 0 to CUDA 1 to enable NVIDIA CUDA support
+ *****************/
+
+#define CUDA 0
+
+#if CUDA
 #include "opencv2/cudaoptflow.hpp"
+#endif
 
 using namespace cv;
 using namespace std;
@@ -93,13 +102,21 @@ int main(int argc, char** argv)
 
 	// Mats used
 	cv::Mat overlay, dst, cflow, frame;
+    #if CUDA
 	cv::cuda::GpuMat flow, frameGPU, cflowGPU, dstGPU;
-	cap->read(frame);
 	cv::cuda::GpuMat gray, prevgray;
+    #else
+    cv::Mat flow, gray, prevgray;
+    #endif
+	cap->read(frame);
+    #if CUDA
 	frameGPU.upload(frame);
 	cv::cuda::cvtColor(frameGPU, gray, COLOR_BGR2GRAY);
-	gray.copyTo(prevgray);
 	cv::cuda::GpuMat uflow(frame.size(), CV_32FC2);
+    #else
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    #endif
+	gray.copyTo(prevgray);
 	cv::Mat labelImage(frame.size(), CV_32S);
 	cv::Mat connected(frame.size(), CV_8UC3);
 
@@ -140,15 +157,20 @@ int main(int argc, char** argv)
 	printf("\n%sPress any key to select static objects. Press ESC to exit.%s\n\n", "\033[0;34m", "\033[0m");
 	int frame_num = 0;
 	while(cap->read(frame)) {
+        #if CUDA
 		frameGPU.upload(frame);
 		cv::cuda::cvtColor(frameGPU, gray, COLOR_BGR2GRAY);
 
 		auto farneback = cv::cuda::FarnebackOpticalFlow::create();
 		farneback->calc(prevgray, gray, uflow);
-		//calcOpticalFlowFarneback(prevgray, gray, uflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
 		cv::cuda::cvtColor(prevgray, dstGPU, COLOR_GRAY2BGR);
 		dstGPU.download(dst);
 		uflow.download(cflow);
+        #else
+        cv::cvtColor(frame, gray, COLOR_BGR2GRAY);
+		calcOpticalFlowFarneback(prevgray, gray, cflow, 0.25, 3, 15, 3, 5, 1.2, OPTFLOW_USE_INITIAL_FLOW);
+        cv::cvtColor(prevgray, dst, COLOR_GRAY2BGR);
+        #endif
 
 		// Calculate which parts of the image are moving
 		overlay = Mat::zeros(cflow.size(), CV_8UC1);
@@ -260,12 +282,12 @@ int main(int argc, char** argv)
 					userIn = cv::selectROI("first_frame", staticDisplay);
 					// TODO let user input label
 					if(!userIn.empty()){
-						cv::String label;
+						std::string label;
 						printf("Please input the label of the static object\n");
-						cin >> label;
+                        std::getline(std::cin, label);
 						FlowObject f {
 							userIn,
-							label,
+							cv::String(label),
 							Vec3b(255, 255, 255)
 						};
 						staticObj.push_back(f);
