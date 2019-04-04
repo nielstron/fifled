@@ -25,8 +25,19 @@ static bool comp(FlowObject a, FlowObject b){
 	return a.boundingBox.area() < b.boundingBox.area();
 }
 
+static double similarity(cv::Rect a, cv::Rect b){
+    if(a.area() > b.area()){
+        return similarity(b, a);
+    }
+    double facOne = ((double) a.area())/b.area();
+    Point diff = ((a.tl()+a.br())/2) - ((b.tl()+b.br())/2);
+    double facTwo = 1/(1+std::abs(diff.x));
+    double facThree = 1/(1+std::abs(diff.y));
+    return (2*facOne+facTwo+facThree)/4;
+}
 
-static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, int thresh) {
+
+static void drawOptFlowMap(const Mat& flow, Mat& cflowmap, int step, uchar color, double thresh) {
 	for (int y = 0; y < cflowmap.rows; y += step)
 		for (int x = 0; x < cflowmap.cols; x += step)
 		{
@@ -59,7 +70,7 @@ int main(int argc, char** argv)
     const String keys =
         "{help h usage ? |       | print this message }"
         "{bbthresh bt    | 500   | pixel threshold to be accepted as a 'thing' to be bounded }"
-        "{flowthresh ft  | 2     | minimum flow in pixels to be marked as a moving pixel }"
+        "{flowthresh ft  | 0.005 | minimum flow in percent of screen pixels to be marked as a moving pixel }"
         "{infile i       |       | path to a video file or image sequence that should be parsed (default: camera 0)}"
         "{outfile o      |       | path to a video file that should be outputted}"
         "{framep fp      |<none> | path/prefix for saving video frames}"
@@ -148,9 +159,12 @@ int main(int argc, char** argv)
 
 
 	int hullTresh = parser.get<int>("bbthresh");
-	int flowthresh = parser.get<int>("flowthresh");
+	int flowthresh = (int) (parser.get<double>("flowthresh") * frame.cols);
+    printf("%f * %d = %d", parser.get<double>("flowthresh"), frame.cols, flowthresh);
 	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
+    std::vector<FlowObject> lastFramesRects;
+    std::vector<FlowObject> res(maxbb);
 	std::vector<FlowObject> rectangles;
 	std::vector<FlowObject> staticObj;
 
@@ -203,7 +217,6 @@ int main(int argc, char** argv)
 			rectangles.push_back(f);
 		}
 		// Handle maxbb rectangles
-		std::vector<FlowObject> res(maxbb);
 		if(0 == maxbb || maxbb > rectangles.size()){
 			res = rectangles;
 		}
@@ -216,6 +229,22 @@ int main(int argc, char** argv)
 				res.push_back(r);
 			}
 		}
+        // Ensure similar rectangles are found
+        for(auto r : rectangles){
+            for(auto l : lastFramesRects){
+                double simil = similarity(l.boundingBox, r.boundingBox);
+                printf("%f ", simil);
+                if(simil > 0.1){
+                    r.color = l.color;
+                    break;
+                }
+            }
+            printf("\n");
+
+        }
+        for(auto r : res){
+            lastFramesRects.push_back(r);
+        }
 		// add static objects, but do now show when occluded by flow rect
 		for(FlowObject s : staticObj){
 			bool add = true;
@@ -240,6 +269,7 @@ int main(int argc, char** argv)
 				cv::putText(dst, f.label, f.boundingBox.tl(), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
 			}
 		}
+        res.clear();
 
 		if(display_input) imshow("input", frame);
 		if(display_labels) imshow("labels", dst);
