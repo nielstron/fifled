@@ -25,6 +25,7 @@ static bool comp(FlowObject a, FlowObject b){
 	return a.boundingBox.area() < b.boundingBox.area();
 }
 
+// TODO marker is far from perfect
 static double similarity(cv::Rect a, cv::Rect b){
     if(a.area() > b.area()){
         return similarity(b, a);
@@ -163,7 +164,7 @@ int main(int argc, char** argv)
     printf("%f * %d = %d", parser.get<double>("flowthresh"), frame.cols, flowthresh);
 	int maxbb = parser.get<int>("maxbb");
 	flowthresh *= flowthresh;
-    std::vector<FlowObject> lastFramesRects;
+    std::list<std::list<FlowObject>*> lastFramesRects;
     std::vector<FlowObject> res(maxbb);
 	std::vector<FlowObject> rectangles;
 	std::vector<FlowObject> staticObj;
@@ -191,6 +192,8 @@ int main(int argc, char** argv)
 		drawOptFlowMap(cflow, overlay, 1, 255, flowthresh);
 
 		// Detect connected moving parts
+		rectangles.clear();
+        res.clear();
 
 		int nLabels = connectedComponents(overlay, labelImage, 8);
 		// -- Drawing
@@ -203,13 +206,12 @@ int main(int argc, char** argv)
 			}
 		}
 		// Compute bounding boxes
-		rectangles.clear();
 		for (int i = 1; i < nLabels; i++) {
 			if (connectedParts[i].size() < hullTresh) {
 				continue;
 			}
 			Rect r = boundingRect(connectedParts[i]);
-			FlowObject f {
+			FlowObject f = {
 				r,
 				label,
 				cv::Vec3b(rand()%255, rand()%255, rand()%255)
@@ -217,9 +219,11 @@ int main(int argc, char** argv)
 			rectangles.push_back(f);
 		}
 		// Handle maxbb rectangles
-		if(0 == maxbb || maxbb > rectangles.size()){
-			res = rectangles;
-		}
+        if(0 == maxbb || maxbb > rectangles.size()){
+            for(auto r : rectangles){
+                res.push_back(r);
+            }
+        }
 		else {
 			std::make_heap(begin(rectangles), end(rectangles), comp);
 			for(int i = 0; i < maxbb; i++){
@@ -230,21 +234,32 @@ int main(int argc, char** argv)
 			}
 		}
         // Ensure similar rectangles are found
-        for(auto r : rectangles){
-            for(auto l : lastFramesRects){
-                double simil = similarity(l.boundingBox, r.boundingBox);
-                printf("%f ", simil);
-                if(simil > 0.1){
-                    r.color = l.color;
-                    break;
+        for(int i = 0; i < res.size(); i++){
+            // Walk through frames in anti chronological order (newest first)
+            for(auto li : lastFramesRects){
+                for(auto l : *li){
+                    double simil = similarity(l.boundingBox, res[i].boundingBox);
+                    printf("%f ", simil);
+                    if(simil > 0.25){
+                        res[i].color = l.color;
+                        break;
+                    }
                 }
             }
             printf("\n");
 
         }
-        for(auto r : res){
-            lastFramesRects.push_back(r);
+        // Remove oldest frames and add current
+        if(frame_num > 5){
+            auto x = lastFramesRects.back();
+            delete x;
+            lastFramesRects.pop_back();
         }
+        std::list<FlowObject>* newRects = new std::list<FlowObject>();
+        for(auto r : res){
+            newRects->push_back(r);
+        }
+        lastFramesRects.push_front(newRects);
 		// add static objects, but do now show when occluded by flow rect
 		for(FlowObject s : staticObj){
 			bool add = true;
@@ -269,7 +284,6 @@ int main(int argc, char** argv)
 				cv::putText(dst, f.label, f.boundingBox.tl(), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
 			}
 		}
-        res.clear();
 
 		if(display_input) imshow("input", frame);
 		if(display_labels) imshow("labels", dst);
