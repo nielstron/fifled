@@ -43,7 +43,7 @@ For image processing OpenCV is used. If you want to build this yourself, [make s
 
 ## Demo Video
 
-[![Watch the demo video](thumb.png "Click to get redirected to the Youtube Video")](https://youtu.be/l5aenMUADbg)
+[![Watch the demo video](thumb.png "Click to get redirected to the Youtube Video")](https://youtu.be/iV0U52wE0IU)
 
 ## TO-DOs
 
